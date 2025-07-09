@@ -6,7 +6,9 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {IERC20Metadata} from "../../../lib/openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IBackGeoOracle} from "../interfaces/IBackGeoOracle.sol";
+import {IERC4626} from "./VaultLib.sol";
 
 /// @title RigoblockDataFeedLib
 /// @author Rigoblock
@@ -51,5 +53,15 @@ library RigoblockDataFeedLib {
         if (tickCumulativesDelta < 0 && (tickCumulativesDelta % int56(uint56(twapWindow)) != 0)) tick--;
 
         return isBaseTokenLower ? tick : -tick;
+    }
+
+    function getDecimals(address token) internal view returns (uint256) {
+        if (token == address(0)) return 18;
+        
+        return uint256(IERC20Metadata(token).decimals());
+    }
+
+    function getDecimals(IERC4626 vault) internal view returns (uint256) {
+        return uint256(IERC20Metadata(address(vault)).decimals());
     }
 }

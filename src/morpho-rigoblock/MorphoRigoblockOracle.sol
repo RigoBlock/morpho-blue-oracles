@@ -27,7 +27,7 @@ contract MorphoRigoblockOracle is IMorphoRigoblockOracle {
 
     using Math for uint256;
     using VaultLib for IERC4626;
-    using RigoblockDataFeedLib for IBackGeoOracle;
+    using RigoblockDataFeedLib for *;
 
     /* IMMUTABLES */
     IBackGeoOracle public immutable BACK_GEO_ORACLE;
@@ -66,7 +66,7 @@ contract MorphoRigoblockOracle is IMorphoRigoblockOracle {
     /// @inheritdoc IMorphoRigoblockOracle
     uint32 public immutable TWAP_WINDOW;
 
-    uint256 public constant SCALE_FACTOR = 10 ** 36;
+    uint256 public immutable SCALE_FACTOR;
 
     /// @dev Assumptions:
     /// - Vaults, if set, are ERC4626-compliant.
@@ -170,6 +170,14 @@ contract MorphoRigoblockOracle is IMorphoRigoblockOracle {
         BASE_TOKEN_DECIMALS = baseTokenDecimals;
         QUOTE_TOKEN_DECIMALS = quoteTokenDecimals;
         TWAP_WINDOW = twapWindow;
+
+        int256 baseVaultAdjustment = address(baseVault) != address(0)
+            ? int256(baseVault.getDecimals()) - int256(baseVault.asset().getDecimals())
+            : int256(0);
+        int256 quoteVaultAdjustment = address(quoteVault) != address(0)
+            ? int256(quoteVault.getDecimals()) - int256(quoteVault.asset().getDecimals())
+            : int256(0);
+        SCALE_FACTOR = 10 ** uint256(int256(36) - baseVaultAdjustment + quoteVaultAdjustment);
     }
 
     /// @inheritdoc IOracle
