@@ -5,6 +5,7 @@ import {Math} from "openzeppelin-contracts/utils/math/Math.sol";
 import {OracleLibrary} from "@uniswap/v3-periphery/contracts/libraries/OracleLibrary.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 /// @title RigoblockDataFeedLib
@@ -12,6 +13,8 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 /// @custom:contact security@rigoblock.com
 /// @notice Library exposing functions to interact with a Rigoblock-compliant feed.
 library RigoblockDataFeedLib {
+    error TickOutOfBounds();
+
     /// @notice Fetches TWAP price from BackgeOracle using Uniswap V3 OracleLibrary.
     /// @param oracle The BackgeOracle contract.
     /// @param poolKey The pool identifier (token0, token1, fee, hook, salt).
@@ -25,15 +28,20 @@ library RigoblockDataFeedLib {
         address baseToken,
         address quoteToken
     ) internal view returns (int24 tick) {
-        // TODO: move in constructor, store as constant (private)
-        require(twapWindow > 0, "Invalid TWAP window")
+        if (baseToken == quoteToken) {
+            return 0;
+        }
 
         uint32[] memory secondsAgos = new uint32[](2);
         secondsAgos[0] = twapWindow;
+
+        bool isBaseTokenLower = address(baseToken) < address(quoteToken);
+        address currency0 = isBaseTokenLower ? baseToken : quoteToken;
+        address currency1 = isBaseTokenLower ? quoteToken : baseToken;
         
         PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(baseToken),
-            currency1: Currency.wrap(quoteToken),
+            currency0: Currency.wrap(currency0),
+            currency1: Currency.wrap(currency1),
             fee: 0,
             tickSpacing: TickMath.MAX_TICK_SPACING,
             hooks: IHooks(address(backGeoOracle))
@@ -42,10 +50,11 @@ library RigoblockDataFeedLib {
         // Calculate the mean tick over the twap window.
         (int48[] memory tickCumulatives,) = backGeoOracle.observe(key, secondsAgos);
         int56 tickCumulativesDelta = tickCumulatives[1] - tickCumulatives[0];
-        int24 tick = int24(tickCumulativesDelta / int56(uint56(twapWindow)));
+        tick = int24(tickCumulativesDelta / int56(uint56(twapWindow)));
         if (tickCumulativesDelta < 0 && (tickCumulativesDelta % int56(uint56(twapWindow)) != 0)) tick--;
 
-        // assert tick is valid? is this needed?
-        assert(tick >= MIN_TICK && tick <= MAX_TICK);
+        if (tick < MIN_TICK && tick > MAX_TICK) revert TickOutOfBounds();
+
+        return isBaseTokenLower ? tick : -tick;
     }
 }
