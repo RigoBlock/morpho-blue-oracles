@@ -5,9 +5,9 @@ import {IOracle} from "../../lib/morpho-blue/src/interfaces/IOracle.sol";
 import {OracleLibrary} from "@uniswap/v3-periphery/contracts/libraries/OracleLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IMorphoRigoblockOracle} from "./interfaces/IMorphoRigoblockOracle.sol";
-import {Math} from "openzeppelin-contracts/utils/math/Math.sol";
+import {Math} from "../../lib/openzeppelin-contracts/contracts/utils/math/Math.sol";
 import {IBackGeoOracle} from "./interfaces/IBackGeoOracle.sol";
-import {RigoblockDataFeedLib} from "./libraries/RigoblockDataFeedLib";
+import {RigoblockDataFeedLib} from "./libraries/RigoblockDataFeedLib.sol";
 import {IERC4626, VaultLib} from "./libraries/VaultLib.sol";
 
 /// @title IMorphoRigoblockOracle
@@ -16,13 +16,14 @@ import {IERC4626, VaultLib} from "./libraries/VaultLib.sol";
 contract MorphoRigoblockOracle is IMorphoRigoblockOracle {
     error InvalidPrice();
     error VaultConversionSampleIsNotOne();
-    error VaultConversionSampleIsNull();
+    error VaultConversionSampleIsZero();
     error InvalidVaultAsset();
     error InvalidTokens();
     error InvalidOracle();
     error InvalidTwapWindow();
     error TokenNotInPool();
     error InvalidDecimals();
+    error TickOutOfBounds();
 
     using Math for uint256;
     using VaultLib for IERC4626;
@@ -58,27 +59,35 @@ contract MorphoRigoblockOracle is IMorphoRigoblockOracle {
     address public immutable QUOTE_POOL_2_TOKEN0;
     address public immutable QUOTE_POOL_2_TOKEN1;
 
+    // TODO: define as uint8
     uint256 public immutable BASE_TOKEN_DECIMALS;
     uint256 public immutable QUOTE_TOKEN_DECIMALS;
 
     /// @inheritdoc IMorphoRigoblockOracle
     uint32 public immutable TWAP_WINDOW;
 
-    uint256 private constant SCALE_FACTOR = 10 ** 36;
+    uint256 public constant SCALE_FACTOR = 10 ** 36;
 
     /// @dev Assumptions:
     /// - Vaults, if set, are ERC4626-compliant.
     /// - BackgeOracle is a valid Uniswap V4 hook with correct observations.
     /// - Token decimals are correct.
     /// - Vault conversion samples and prices don’t overflow.
+    /// @param backGeoOracle BackgeOracle contract address.
     /// @param baseVault Base vault, or address(0) for token.
     /// @param baseVaultConversionSample Sample shares for base vault; 1 if no vault.
     /// @param quoteVault Quote vault, or address(0) for token.
     /// @param quoteVaultConversionSample Sample shares for quote vault; 1 if no vault.
     /// @param baseToken Underlying base token (collateral).
     /// @param quoteToken Underlying quote token (loan).
-    /// @param oracle BackgeOracle contract address.
-    /// @param poolKey Pool identifier (token0, token1, fee, hook, salt).
+    /// @param basePool1Token0 Address,
+    /// @param basePool1Token1 Address,
+    /// @param basePool2Token0 Address,
+    /// @param basePool2Token1 Address,
+    /// @param quotePool1Token0 Address,
+    /// @param quotePool1Token1 Address,
+    /// @param quotePool2Token0 Address,
+    /// @param quotePool2Token1 Address,
     /// @param twapWindow TWAP window in seconds.
     /// @param baseTokenDecimals Decimals of base token.
     /// @param quoteTokenDecimals Decimals of quote token.
@@ -163,7 +172,7 @@ contract MorphoRigoblockOracle is IMorphoRigoblockOracle {
         TWAP_WINDOW = twapWindow;
     }
 
-    /// @inheritdoc IMorphoRigoblockOracle
+    /// @inheritdoc IOracle
     function price() external view override returns (uint256) {
         int24 baseTick1 = BACK_GEO_ORACLE.getTick(TWAP_WINDOW, BASE_POOL_1_TOKEN0, BASE_POOL_1_TOKEN1);
         int24 baseTick2 = BACK_GEO_ORACLE.getTick(TWAP_WINDOW, BASE_POOL_2_TOKEN0, BASE_POOL_2_TOKEN1);
@@ -173,7 +182,7 @@ contract MorphoRigoblockOracle is IMorphoRigoblockOracle {
         int56 finalTick = int56(baseTick1) + int56(baseTick2) - int56(quoteTick1) - int56(quoteTick2);
         if (finalTick < TickMath.MIN_TICK || finalTick > TickMath.MAX_TICK) revert TickOutOfBounds();
 
-        uint256 price = OracleLibrary.getQuoteAtTick(
+        uint256 finalPrice = OracleLibrary.getQuoteAtTick(
             int24(finalTick),
             uint128(10 ** BASE_TOKEN_DECIMALS),
             BASE_TOKEN,
@@ -181,12 +190,12 @@ contract MorphoRigoblockOracle is IMorphoRigoblockOracle {
         );
 
         // Assumes QUOTE_VAULT.getAssets(QUOTE_VAULT_CONVERSION_SAMPLE) > 0
-        price = SCALE_FACTOR.mulDiv(
-            BASE_VAULT.getAssets(BASE_VAULT_CONVERSION_SAMPLE) * price,
+        finalPrice = SCALE_FACTOR.mulDiv(
+            BASE_VAULT.getAssets(BASE_VAULT_CONVERSION_SAMPLE) * finalPrice,
             QUOTE_VAULT.getAssets(QUOTE_VAULT_CONVERSION_SAMPLE)
         );
-        if (price == 0) revert InvalidPrice();
+        if (finalPrice == 0) revert InvalidPrice();
 
-        return price;
+        return finalPrice;
     }
 }
