@@ -70,10 +70,10 @@ contract MorphoRigoblockOracle is IMorphoRigoblockOracle {
 
     /// @dev Assumptions:
     /// - Vaults, if set, are ERC4626-compliant.
-    /// - BackgeOracle is a valid Uniswap V4 hook with correct observations.
+    /// - BackGeOracle is a valid Uniswap V4 hook with correct observations.
     /// - Token decimals are correct.
     /// - Vault conversion samples and prices don’t overflow.
-    /// @param backGeoOracle BackgeOracle contract address.
+    /// @param backGeoOracle BackGeOracle contract address.
     /// @param baseVault Base vault, or address(0) for token.
     /// @param baseVaultConversionSample Sample shares for base vault; 1 if no vault.
     /// @param quoteVault Quote vault, or address(0) for token.
